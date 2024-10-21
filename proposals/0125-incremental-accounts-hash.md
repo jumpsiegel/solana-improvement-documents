@@ -2,17 +2,18 @@
 simd: '0125'
 title: Incremental Accounts Hash
 authors:
+  - Brooks Prumo
   - Emanuele Cesena
+  - Haoran Yi
+  - Jeff Washington
+  - Josh Siegel
   - Liam Heeger
   - Sam Kim
   - Tom Pointon
-  - Josh Siegel
-  - Jeff Washington
-  - Haoran Yi
 category: Standard
 type: Core
 status: Draft
-created: 2023-03-14
+created: 2024-10-21
 feature:
 supersedes:
 extends:
@@ -25,9 +26,9 @@ accounts", based on the hash function [LtHash](https://ia.cr/2019/227) [1].
 
 This new hash is very efficient to compute, and can replace both the [**Epoch
 Accounts
-Hash**](https://docs.solanalabs.com/implemented-proposals/epoch_accounts_hash)
-and the **Delta Accounts Hash**, in an effort to scale Solana to billions of
-accounts.
+Hash**](https://docs.solanalabs.com/implemented-proposals/epoch_accounts_hash),
+the snapshot hash, and the **Delta Accounts Hash**, in an effort to scale Solana
+to billions of accounts.
 
 ## Motivation
 
@@ -51,22 +52,6 @@ the need to sort and maintain large intermediate state.
 
 This work proposes a specific incremental hash suitable for Solana needs, and
 defines how to compute it and incorporating it in the existing protocol.
-
-## Alternatives Considered
-
-We considered the following alternatives:
-
-- Merkle Trees.
-  - Pros: well known, can support inclusion proofs.
-  - Cons: won't scale.
-- Verkle Trees.
-  - Pros: scale better, support inclusion proofs.
-  - Cons: not fast enough for Solana.
-- Incremental Hash based on XOR.
-  - Insecure: known sub-exponential attacks exist [3, 4].
-- Incremental Hash based on Elliptic Curve, e.g. Ristretto or GLS254.
-  - Pros: secure incremental hash.
-  - Cons: not as efficient as LtHash (10-100x slower).
 
 ## New Terminology
 
@@ -126,6 +111,10 @@ hash(account) :=
     return lthash.fini()
 ```
 
+As an aside, the first 32 bytes of what is produced here is the exact same 32 bytes as the
+previous blake3 account hash used in the account delta hash and snapshot hashes.
+
+
 ### Incremental Accounts Hash (WIP)
 
 For a set of accounts A:
@@ -137,7 +126,7 @@ hash(A) := \sum_{a \in A} hash(a)
 Specifically, the Incremental Accounts Hash or "hash of all accounts" is the sum
 of the (single) account hash for all accounts.
 
-A validator can compute the initial value for the Incremental Accounts Hash at
+A validator computes the initial value for the Incremental Accounts Hash at
 boot, while loading the accounts state from snapshot.
 
 At slot S, a list of txs is executed, making changes on a set of writeable
@@ -163,76 +152,6 @@ Notes:
   close have after hash = 0. Add/sub will work as expected in these edge cases,
   or they could be optimized. Again this is left as an implementation choice
 
-### Current Workflow
-
-Lifecycle of accounts:
-
-1. Validator starts up at a given rooted slot
-    1. Needs every account
-        1. An account: pubkey + account state: primarily data, lamports, owner.
-            1. A hash can be created from the account data
-    2. A hash and capitalization from the entire accounts state is produced
-        1. The hash and capitalization can be verified against the cluster and
-           the snapshot it came from (this is for security and sanity).
-2. Validator executes a transaction
-    1. Many accounts are read only
-    2. Some accounts are writable and updated by the transaction (the same
-       account can be written multiple times per transaction).
-3. At the end of a slot, all written accounts, in their final state, are held
-   together.
-    1. Final state means the final values of the fields: data, lamports, ...
-       after all transactions have run in this slot and things like rewards and
-       fees were dealt with.
-4. A Delta Accounts Hash is created
-    1. A hash is created per account. 
-        1. This is done async in the bg today: each time account state is
-           written, a bg thread hashes the new state to have the hash ready when
-           it is needed later.
-    2. The list of all accounts written in this slot (final state of each
-       account) are sorted in pubkey order.
-    3. The hashes, in pubkey order, are hashed together in a merkle tree. Notes:
-        1. Accounts with lamports=0 ARE included in this merkle tree.
-        2. This list has to be de-duped
-            1. If the same account is written 2 times in this slot, the hash for
-               the account state after the final write is used here.
-    4. The merkle tree root hash is called the Delta Accounts Hash.
-5. The Delta Accounts Hash is hashed with other data to become the Bank’s Block
-   Hash.
-6. Once an account is written in this slot, any children slots will load the
-   account from this slot.
-    1. Note that this is true immediately, even before this slot has become a
-       root.
-7. When the slot becomes a root (when cluster agrees), the modified accounts
-   from this slot are lazily written to more permanent storage.
-    1. If the slot does not become a root, then all changes to these accounts
-       are discarded.
-
-Verifying the entire account state:
-
-1. An “Accounts Hash” is a hash of the entire account state.
-2. There are ~3 times we calculate an Accounts Hash
-    1. At startup, to verify entire account state matches expected
-    2. Prior to creating a snapshot. A snapshot is a file containing almost
-       everything needed to start a validator from a given slot:
-        1. All accounts state
-        2. A persisted bank at the slot of the snapshot
-        3. The status cache
-        4. It does NOT contain genesis.
-        5. ...
-    3. Once per epoch for the Epoch Accounts Hash
-        1. Hash is calculated as of (rooted) slot = 25% of epoch
-        2. Hash is included in bank’s block hash when slot = 75% of epoch
-        3. Goal of this is to make sure, with consensus, at least once per
-           epoch, that every validator’s account state matches expected
-3. The calculation of the Epoch Accounts Hash today is:
-    1. Source data:
-        1. Each account at its highest slot number
-        2. Excluding accounts where lamports=0 at their highest slot number
-    2. Accounts are sorted by pubkey (computationally, this is the most
-       expensive and worst scalable part)
-    3. A merkle tree of width 16 is calculated
-    4. The merkle root is the Epoch Accounts Hash.
-
 ### New Workflow
 
 Using the incremental hash:
@@ -251,46 +170,18 @@ Using the incremental hash:
         3. Said in another way, this update costs approximately like a Delta
            Accounts Hash, but provides a hash of the state of all accounts as
            the Epoch Accounts Hash.
-2. In the Bank’s Block Hash, we replace the Delta Accounts Hash with the new
-   Incremental Accounts Hash
-    1. The actual Incremental Accounts Hash is 2KiB long. For simplicity we
-       include a 32-byte long BLAKE3(Incremental Accounts Hash) into the Bank’s
-       Block Hash.
-    2. The entire account state is thus agreed upon by every slot instead of
+2. In the Bank’s Block Hash, we add the incremental hash after the the Delta Accounts Hash.
+    1. The entire account state is thus agreed upon by every slot instead of
        once per epoch
-    3. In principle, a validator could run a full hash of all accounts
+    2. In principle, a validator could run a full hash of all accounts
        accumulation in the background on its own schedule to verify no disk bit
        flips have occurred, or any other unexpected change.
-4. We also replace the Epoch Accounts Hash with the new Incremental Accounts
+3. We also replace the Epoch Accounts Hash with the new Incremental Accounts
    Hash
-    1. The actual Incremental Accounts Hash is 2KiB long. For simplicity we use
-       a 32-byte long BLAKE3(Incremental Accounts Hash) as a replacement of the
-       Epoch Accounts Hash.
 
-### Replacing Epoch & Delta Accounts Hash
+### Summary of changes
 
-This section describes the details of replacing just the Epoch Accounts Hash
-with the Incremental Accounts Hash.
-
-Pros:
-
-- Simplicity: one way to hash
-- Performs better than merkle tree
-- Scales independently of total # accounts
-   - O(# accounts written per slot)
-
-Cons:
-
-- Changes to all validators
-- For a while we'll have to support and compute both
-- Versioning issue with snapshots
-- This adds work that must be done per slot to update the accumulated hash
-- At the current scale, performance is worse than merkle tree and may affect
-  block time (see Performance section below for details on why we think it's ok)
-
-Result:
-
-1. Bank.accounts delta hash: incremental
+1. Bank.accounts delta hash: account delta hash AND incremental hash
 2. Bank.epoch accounts hash: incremental
 3. Bank.parent’s hash of all accounts: incremental
 4. Snapshot.hash of all accounts: incremental
@@ -339,7 +230,7 @@ both delta and incremental hash?**
 
 Implementors of this specification may wish to cache or store the hash of the
 accounts. Doing this for the full 2KiB of BLAKE3 extended output could be
-prohibitively expensive. 
+prohibitively expensive.
 
 To avoid this high storage cost we recommend retaining the BLAKE3 state
 necessary to recompute the extended output. This is comprised of:
