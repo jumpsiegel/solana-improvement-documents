@@ -1,0 +1,8 @@
+target
+*.bin
+generate_example_snapshot_streaming
+test_c_struct_sizes
+generate_cpp_snapshot
+verify_cpp_snapshot
+test_cpp_struct_sizes
+verify_c_snapshot
