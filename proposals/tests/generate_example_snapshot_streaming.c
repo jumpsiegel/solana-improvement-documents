@@ -271,6 +271,12 @@ void write_chunk_file_streaming(const char *filename, account_payload_t *account
         total_data_size += sizeof(account_payload_t) + data_lens[i];
     }
 
+    // Check 4GB limit on uncompressed data
+    if (total_data_size > MAX_PAYLOAD_SIZE) {
+        printf("Error: Uncompressed object exceeds 4GB limit: %zu bytes\n", total_data_size);
+        return;
+    }
+
     // Buffer all account data for compression
     uint8_t* account_buffer = malloc(total_data_size);
     if (!account_buffer) {

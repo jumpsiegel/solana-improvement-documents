@@ -20,6 +20,8 @@
 typedef struct {
     uint16_t magic_number;     // Version identifier
     uint16_t header_len;       // sizeof(file_header_t)
+    uint64_t slot;             // Snapshot slot number
+    uint32_t file_index;       // Chunk file index (0, 1, 2, ...)
 } file_header_t;
 
 typedef struct {
@@ -58,15 +60,14 @@ int main() {
     printf("  FileHeader: %zu bytes\n", sizeof(file_header_t));
     printf("  FileFooter: %zu bytes\n", sizeof(file_footer_t));
     printf("  AddAccountData: %zu bytes\n", sizeof(add_account_data_t));
-    printf("  FullSnapshotMetadata: %zu bytes\n", sizeof(full_snapshot_metadata_t));
     printf("  AccountPayload: %zu bytes\n", sizeof(account_payload_t));
     printf("\n");
 
     // Verify expected sizes
     int all_correct = 1;
 
-    if (sizeof(file_header_t) != 4) {
-        printf("❌ FileHeader size mismatch: expected 4, got %zu\n", sizeof(file_header_t));
+    if (sizeof(file_header_t) != 16) {
+        printf("❌ FileHeader size mismatch: expected 16, got %zu\n", sizeof(file_header_t));
         all_correct = 0;
     }
 
@@ -80,10 +81,7 @@ int main() {
         all_correct = 0;
     }
 
-    if (sizeof(full_snapshot_metadata_t) != 2060) {
-        printf("❌ FullSnapshotMetadata size mismatch: expected 2060, got %zu\n", sizeof(full_snapshot_metadata_t));
-        all_correct = 0;
-    }
+
 
     if (sizeof(account_payload_t) != 76) {
         printf("❌ AccountPayload size mismatch: expected 76, got %zu\n", sizeof(account_payload_t));
@@ -113,7 +111,7 @@ int main() {
     printf("  MAGIC_FILE_HEADER: 0x%04X\n", MAGIC_FILE_HEADER);
     printf("  MAGIC_FILE_FOOTER: 0x%04X\n", MAGIC_FILE_FOOTER);
     printf("  MAGIC_ACCOUNT_DATA: 0x%04X\n", MAGIC_ACCOUNT_DATA);
-    printf("  MAGIC_METADATA: 0x%04X\n", MAGIC_METADATA);
+
     printf("\n");
 
     if (all_correct) {

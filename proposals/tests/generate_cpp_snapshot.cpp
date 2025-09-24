@@ -228,6 +228,12 @@ void write_chunk_file(const std::string& filename,
         uncompressed_data.insert(uncompressed_data.end(), account.data.begin(), account.data.end());
     }
 
+    // Check 4GB limit on uncompressed data
+    if (uncompressed_data.size() > MAX_PAYLOAD_SIZE) {
+        std::cerr << "Error: Uncompressed object exceeds 4GB limit: " << uncompressed_data.size() << " bytes" << std::endl;
+        return;
+    }
+
     // 4. Compress data using LZ4
     std::vector<uint8_t> compressed_data;
     uint16_t compression_type = COMPRESSION_LZ4;

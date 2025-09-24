@@ -137,12 +137,12 @@ fn write_chunk_file_multi_object(
 
         // Compress the object data
         let compression_type = if ENABLE_COMPRESSION { COMPRESSION_LZ4 } else { COMPRESSION_NONE };
-        let compressed = compress_data(&object_data, compression_type)?;
-
-        // Check 4GB limit
-        if compressed.compressed_size as u64 > MAX_PAYLOAD_SIZE {
-            anyhow::bail!("Compressed object exceeds 4GB limit: {} bytes", compressed.compressed_size);
+        // Check 4GB limit on uncompressed data
+        if object_data.len() as u64 > MAX_PAYLOAD_SIZE {
+            anyhow::bail!("Uncompressed object exceeds 4GB limit: {} bytes", object_data.len());
         }
+
+        let compressed = compress_data(&object_data, compression_type)?;
 
         // Write AddAccountData header
         let object_header = AddAccountData {

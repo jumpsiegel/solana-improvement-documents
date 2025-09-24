@@ -13,7 +13,7 @@ constexpr size_t SHA256_SIZE = 32;
 constexpr uint16_t MAGIC_FILE_HEADER = 0x534E;      // "SN" (Snapshot)
 constexpr uint16_t MAGIC_FILE_FOOTER = 0x4654;      // "FT" (Footer)
 constexpr uint16_t MAGIC_ACCOUNT_DATA = 0x4143;     // "AC" (Account)
-constexpr uint16_t MAGIC_METADATA = 0x4D45;         // "ME" (Metadata)
+
 
 // Structures from SIMD specification (exact C++ translations)
 #pragma pack(push, 1)
@@ -21,6 +21,8 @@ constexpr uint16_t MAGIC_METADATA = 0x4D45;         // "ME" (Metadata)
 struct FileHeader {
     uint16_t magic_number;     // Version identifier
     uint16_t header_len;       // sizeof(FileHeader)
+    uint64_t slot;             // Snapshot slot number
+    uint32_t file_index;       // Chunk file index (0, 1, 2, ...)
 };
 
 struct FileFooter {
@@ -47,12 +49,7 @@ struct AddAccountData {
     // accounts_data follows immediately after this struct
 };
 
-struct FullSnapshotMetadata {
-    uint16_t magic_number;     // Exists in only one chunk for metadata
-    uint16_t header_len;       // sizeof(FullSnapshotMetadata)
-    uint64_t slot;             // Snapshot slot number
-    uint8_t lthash[LTHASH_SIZE];       // Accumulated LtHashes of all chunks
-};
+
 
 #pragma pack(pop)
 
@@ -64,15 +61,15 @@ int main() {
     std::cout << "  FileHeader: " << sizeof(FileHeader) << " bytes" << std::endl;
     std::cout << "  FileFooter: " << sizeof(FileFooter) << " bytes" << std::endl;
     std::cout << "  AddAccountData: " << sizeof(AddAccountData) << " bytes" << std::endl;
-    std::cout << "  FullSnapshotMetadata: " << sizeof(FullSnapshotMetadata) << " bytes" << std::endl;
+
     std::cout << "  AccountPayload: " << sizeof(AccountPayload) << " bytes" << std::endl;
     std::cout << std::endl;
 
     // Verify expected sizes match SIMD specification
     bool all_correct = true;
 
-    if (sizeof(FileHeader) != 4) {
-        std::cout << "❌ FileHeader size mismatch! Expected 4, got " << sizeof(FileHeader) << std::endl;
+    if (sizeof(FileHeader) != 16) {
+        std::cout << "❌ FileHeader size mismatch! Expected 16, got " << sizeof(FileHeader) << std::endl;
         all_correct = false;
     }
 
@@ -86,10 +83,7 @@ int main() {
         all_correct = false;
     }
 
-    if (sizeof(FullSnapshotMetadata) != 2060) {
-        std::cout << "❌ FullSnapshotMetadata size mismatch! Expected 2060, got " << sizeof(FullSnapshotMetadata) << std::endl;
-        all_correct = false;
-    }
+
 
     if (sizeof(AccountPayload) != 76) {
         std::cout << "❌ AccountPayload size mismatch! Expected 76, got " << sizeof(AccountPayload) << std::endl;
@@ -115,7 +109,7 @@ int main() {
     std::cout << "  MAGIC_FILE_HEADER: 0x" << std::hex << std::uppercase << MAGIC_FILE_HEADER << std::dec << std::endl;
     std::cout << "  MAGIC_FILE_FOOTER: 0x" << std::hex << std::uppercase << MAGIC_FILE_FOOTER << std::dec << std::endl;
     std::cout << "  MAGIC_ACCOUNT_DATA: 0x" << std::hex << std::uppercase << MAGIC_ACCOUNT_DATA << std::dec << std::endl;
-    std::cout << "  MAGIC_METADATA: 0x" << std::hex << std::uppercase << MAGIC_METADATA << std::dec << std::endl;
+
 
     // Verify magic numbers match SIMD specification
     if (MAGIC_FILE_HEADER != 0x534E) {
@@ -133,10 +127,7 @@ int main() {
         all_correct = false;
     }
 
-    if (MAGIC_METADATA != 0x4D45) {
-        std::cout << "❌ MAGIC_METADATA mismatch! Expected 0x4D45" << std::endl;
-        all_correct = false;
-    }
+
 
     std::cout << std::endl;
 
